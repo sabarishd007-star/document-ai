@@ -1,0 +1,20 @@
+DocuMind Project Overview and Technical Specifications
+Date: November 2026
+Version: 1.0.0
+
+1. Executive Summary
+DocuMind is an enterprise-grade document intelligence system that combines Retrieval-Augmented Generation (RAG) with Google Gemini to enable natural language questioning over complex unstructured documents. It handles both PDF and TXT documents up to 10MB in size.
+
+2. Architecture and Data Pipeline
+- Text Ingestion: Uploaded documents are parsed using PyPDF for PDFs and UTF-8/Latin-1 decoders for plain text.
+- Chunking Strategy: Text is divided into chunks of 500 characters with an overlap of 100 characters to preserve boundary context across sentences.
+- Vector Embeddings: Each chunk is encoded into dense vector embeddings using the sentence-transformers model 'all-MiniLM-L6-v2'.
+- Vector Database: FAISS (Facebook AI Similarity Search) with IndexFlatIP is used with L2-normalized vectors to provide lightning-fast cosine similarity lookups.
+- LLM & Generation: Retrieved snippets passing a similarity threshold of 0.30 are formatted into a grounded system prompt and processed by Gemini 2.5 Flash.
+
+3. Security and Grounding
+To prevent hallucinations, DocuMind enforces strict grounding guidelines. If a user asks a question whose answer is not contained in the uploaded source files, DocuMind explicitly responds that the information cannot be found in the provided documents. Every factual claim is paired with citations identifying the exact source filename, chunk ID, and confidence match percentage.
+
+4. API and Deployment
+The backend is built with FastAPI, providing asynchronous document ingestion, vector index management, and RAG question answering. A built-in web interface provides real-time document drag-and-drop and chat.
+
