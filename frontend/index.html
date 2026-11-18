@@ -202,6 +202,8 @@ body[data-mode="overview"] .overview{display:grid}
 .a h4{margin:calc(var(--u)*12) 0 calc(var(--u)*6);font-size:calc(var(--u)*15.5);font-weight:600}
 .a strong{font-weight:600;color:#fff}
 .a code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:#1d1f2a;border:1px solid var(--line);padding:0 .35em;border-radius:5px;color:#BCD0FF}
+.a pre{background:#111420;border:1px solid var(--line);border-radius:calc(var(--u)*8);padding:calc(var(--u)*12);overflow-x:auto;margin:calc(var(--u)*10) 0}
+.a pre code{background:none;border:0;padding:0;font-size:calc(var(--u)*13);color:#CBE1FF;display:block}
 .fn{display:inline-grid;place-items:center;min-width:calc(var(--u)*18);height:calc(var(--u)*18);margin:0 calc(var(--u)*2);padding:0 calc(var(--u)*4);vertical-align:calc(var(--u)*2);
   border-radius:calc(var(--u)*6);background:rgba(79,120,255,.22);color:#A9C0FF;font-size:calc(var(--u)*11);font-weight:600}
 .fn:hover,.fn.on{background:var(--blue);color:#fff}
@@ -328,6 +330,22 @@ dialog::backdrop{background:rgba(5,6,12,.66);backdrop-filter:blur(3px)}
 .chunk-head .badge{padding:calc(var(--u)*2) calc(var(--u)*6);border-radius:999px;background:rgba(255,255,255,.08);color:#D4D4D4}
 .chunk-text{margin:0;font-size:calc(var(--u)*12);line-height:1.45;color:#c0c0c0;white-space:pre-wrap}
 
+/* ---------- Document Preview ---------- */
+#previewDlg{width:min(calc(var(--u)*900),96vw);max-height:92dvh}
+.preview-header{display:flex;justify-content:space-between;align-items:center;padding:calc(var(--u)*14) calc(var(--u)*20);border-bottom:1px solid var(--line)}
+.preview-header h2{margin:0;font-size:calc(var(--u)*15);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+.preview-body{display:flex;flex-direction:column;min-height:0;height:calc(90dvh - calc(var(--u)*80))}
+.preview-embed{flex:1;min-height:0;border:0;width:100%;background:#111}
+.preview-info{padding:calc(var(--u)*20);display:flex;flex-direction:column;gap:calc(var(--u)*14)}
+.file-icon-big{width:calc(var(--u)*64);height:calc(var(--u)*64);border-radius:calc(var(--u)*14);display:grid;place-items:center;font-size:calc(var(--u)*32);background:linear-gradient(135deg,#2F6BFF,#5A4CF5);color:#fff;margin:0 auto}
+.preview-meta{display:grid;grid-template-columns:auto 1fr;gap:calc(var(--u)*8) calc(var(--u)*20);font-size:calc(var(--u)*13);padding:calc(var(--u)*14);background:var(--s2);border-radius:calc(var(--u)*10);border:1px solid var(--line)}
+.preview-meta dt{color:var(--g1)} .preview-meta dd{margin:0;color:#fff}
+.preview-badge{display:inline-flex;align-items:center;gap:calc(var(--u)*6);padding:calc(var(--u)*4) calc(var(--u)*12);border-radius:999px;font-size:calc(var(--u)*12);font-weight:500;background:rgba(47,107,255,.18);color:#A9C0FF}
+.preview-unsupported{text-align:center;padding:calc(var(--u)*32) calc(var(--u)*24);color:var(--g1);font-size:calc(var(--u)*14)}
+/* Preview button on file rows */
+.preview-btn{background:none;border:1px solid var(--line);border-radius:calc(var(--u)*6);padding:calc(var(--u)*3) calc(var(--u)*8);font-size:calc(var(--u)*11.5);color:var(--g1);cursor:pointer;transition:color .15s,border-color .15s,background .15s;white-space:nowrap}
+.preview-btn:hover{color:#fff;border-color:rgba(110,140,255,.6);background:rgba(47,107,255,.12)}
+
 </style>
 </head>
 <body data-mode="chat">
@@ -403,7 +421,7 @@ dialog::backdrop{background:rgba(5,6,12,.66);backdrop-filter:blur(3px)}
           <label for="input" class="sr">Ask a question about your documents</label>
           <textarea id="input" rows="2" maxlength="1000" placeholder="Ask Anything..."></textarea>
           <div class="composer-row">
-            <input type="file" id="fileInput" accept=".pdf,.txt,application/pdf,text/plain" multiple hidden>
+            <input type="file" id="fileInput" accept=".pdf,.txt,.pptx,.ppt,.docx,.doc" multiple hidden>
             <button class="chip sq" id="addBtn" type="button" aria-label="Add documents" title="Add PDF or TXT files"><span data-icon="plus"></span></button>
             <button class="chip" id="depthBtn" type="button" aria-haspopup="true" aria-expanded="false"><span id="depthLabel">Normal</span><span data-icon="chev"></span></button>
             <button class="chip" id="exportBtn" type="button" aria-haspopup="true" aria-expanded="false" disabled>Export<span data-icon="chev"></span></button>
@@ -530,6 +548,20 @@ dialog::backdrop{background:rgba(5,6,12,.66);backdrop-filter:blur(3px)}
   <div class="dlg-head"><h2 id="confirmTitle">Are you sure?</h2></div>
   <div class="dlg-body"><p id="confirmText" style="margin:0"></p></div>
   <div class="dlg-foot"><button class="btn ghost" type="button" id="confirmNo">Cancel</button><button class="btn danger" type="button" id="confirmYes">Confirm</button></div>
+</dialog>
+
+<!-- Document Preview Dialog -->
+<dialog id="previewDlg" aria-labelledby="previewTitle">
+  <div class="preview-header">
+    <h2 id="previewTitle">Document Preview</h2>
+    <div style="display:flex;align-items:center;gap:calc(var(--u)*8)">
+      <span id="previewBadge" class="preview-badge"></span>
+      <button class="round" type="button" data-close aria-label="Close" data-icon="x"></button>
+    </div>
+  </div>
+  <div class="preview-body" id="previewBody">
+    <!-- filled dynamically -->
+  </div>
 </dialog>
 
 <script>
@@ -750,14 +782,59 @@ function renderStatus() {
   renderFiles();
 }
 function validateFile(f) {
-  if (!/\.(pdf|txt)$/i.test(f.name)) return "Only PDF and TXT files are supported.";
+  if (!/\.(pdf|txt|pptx|ppt|docx|doc)$/i.test(f.name)) return "Only PDF, TXT, PPTX, PPT, DOCX, DOC files are supported.";
   if (f.size === 0) return "This file is empty.";
   if (f.size > LIMITS.maxMB * 1024 * 1024) return "Too large. The limit is " + LIMITS.maxMB + " MB.";
+  if (/\.(pptx|ppt|docx|doc)$/i.test(f.name)) return ""; // allowed for preview — backend indexes PDF/TXT only
   return "";
 }
+/* ---------- doc preview store ---------- */
+const docBlobs = new Map(); // filename -> { url, type, size, chunks, status }
+function fileTypeLabel(name) {
+  const ext = (name.match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
+  return { pdf:"PDF", txt:"Text", pptx:"PowerPoint", ppt:"PowerPoint", docx:"Word", doc:"Word" }[ext] || ext.toUpperCase();
+}
+function fileEmoji(name) {
+  const ext = (name.match(/\.(\w+)$/) || [])[1]?.toLowerCase() || "";
+  if (ext === "pdf") return "📄";
+  if (ext === "txt") return "📝";
+  if (ext === "pptx" || ext === "ppt") return "📊";
+  if (ext === "docx" || ext === "doc") return "📃";
+  return "📁";
+}
+function openPreview(name) {
+  const info = docBlobs.get(name) || {};
+  const dlg = $("#previewDlg");
+  const body = $("#previewBody");
+  $("#previewTitle").textContent = name;
+  $("#previewBadge").textContent = fileTypeLabel(name);
+  body.innerHTML = "";
+  if (info.url && /\.pdf$/i.test(name)) {
+    body.innerHTML = `<iframe class="preview-embed" src="${info.url}#toolbar=1&navpanes=1" title="PDF preview of ${esc(name)}"></iframe>`;
+  } else {
+    const fmtSize = s => !s ? "" : s > 1048576 ? (s/1048576).toFixed(1)+" MB" : s > 1024 ? Math.round(s/1024)+" KB" : s+" B";
+    const isPdfTxt = /\.(pdf|txt)$/i.test(name);
+    body.innerHTML = `
+      <div class="preview-info">
+        <div class="file-icon-big">${fileEmoji(name)}</div>
+        <dl class="preview-meta">
+          <dt>File name</dt><dd>${esc(name)}</dd>
+          <dt>Type</dt><dd>${fileTypeLabel(name)}</dd>
+          ${info.size ? `<dt>Size</dt><dd>${fmtSize(info.size)}</dd>` : ""}
+          ${info.chunks != null ? `<dt>Chunks indexed</dt><dd>${info.chunks}</dd>` : ""}
+          ${info.status ? `<dt>Status</dt><dd>${esc(info.status)}</dd>` : ""}
+        </dl>
+        ${!isPdfTxt ? `<p class="preview-unsupported">⚠️ <strong>${fileTypeLabel(name)}</strong> files are shown as info only. For AI indexing, upload a <strong>PDF or TXT</strong> version.</p>` : ""}
+      </div>`;
+  }
+  hydrateIcons(dlg);
+  dlg.showModal();
+}
+
 function uploadRow(name, cls, text) {
   const id = "u" + uid();
-  $("#uploads").insertAdjacentHTML("beforeend", `<li class="row-item ${cls}" id="${id}">${icon("file")}<span class="nm">${esc(name)}</span><span class="st">${esc(text)}</span></li>`);
+  $("#uploads").insertAdjacentHTML("beforeend", `<li class="row-item ${cls}" id="${id}">${icon("file")}<span class="nm">${esc(name)}</span><span class="st">${esc(text)}</span><button class="preview-btn" type="button" data-preview="${esc(name)}" title="Preview document">👁 View</button></li>`);
+  document.getElementById(id)?.querySelector("[data-preview]")?.addEventListener("click", e => { e.stopPropagation(); openPreview(e.currentTarget.dataset.preview); });
   return id;
 }
 function setUploadRow(id, cls, text) {
@@ -776,18 +853,39 @@ async function uploadOne(f) {
 }
 async function uploadFiles(list) {
   for (const f of list) {
-    const row = uploadRow(f.name, "", "Uploading");
+    // Always create a blob URL for preview (revoked on page unload)
+    const blobUrl = /\.pdf$/i.test(f.name) ? URL.createObjectURL(f) : null;
+    docBlobs.set(f.name, { url: blobUrl, size: f.size, chunks: null, status: "Uploading…" });
+
+    const isIndexable = /\.(pdf|txt)$/i.test(f.name);
+    const row = uploadRow(f.name, "", isIndexable ? "Uploading" : "Preview only");
     const bad = validateFile(f);
-    if (bad) { setUploadRow(row, "err", bad); toast(f.name + ": " + bad); logEvent("alert", f.name + ": " + bad); continue; }
+    if (bad) {
+      docBlobs.set(f.name, { url: blobUrl, size: f.size, chunks: null, status: "Error: " + bad });
+      setUploadRow(row, "err", bad); toast(f.name + ": " + bad); logEvent("alert", f.name + ": " + bad); continue;
+    }
+
+    // Non-indexable types (PPT, DOCX…): just show info card, don't send to backend
+    if (!isIndexable) {
+      docBlobs.set(f.name, { url: null, size: f.size, chunks: null, status: "Preview only — not indexed" });
+      setUploadRow(row, "ok", "Preview only");
+      toast(`${f.name}: preview ready (upload a PDF to index)`);
+      logEvent("alert", `${f.name}: preview only`);
+      continue;
+    }
+
     try {
       const d = await uploadOne(f) || {};
       const chunks = pick(d, ["chunks", "chunks_indexed", "chunks_created", "num_chunks", "chunk_count"]);
       state.files = state.files.filter(x => x.name !== f.name).concat([{ name: f.name, chunks, size: f.size }]);
       store.set("files", state.files);
       const msg = chunks != null ? `Indexed ${chunks} chunks` : "Indexed";
+      docBlobs.set(f.name, { url: blobUrl, size: f.size, chunks, status: msg });
       setUploadRow(row, "ok", msg); toast(`${f.name}: ${msg.toLowerCase()}`); logEvent("check", `${f.name} ${msg.toLowerCase()}`);
     } catch (e) {
-      const m = friendly(e, "upload"); setUploadRow(row, "err", e.status === 409 ? "Already indexed" : m);
+      const m = friendly(e, "upload");
+      docBlobs.set(f.name, { url: blobUrl, size: f.size, chunks: null, status: e.status === 409 ? "Already indexed" : m });
+      setUploadRow(row, "err", e.status === 409 ? "Already indexed" : m);
       toast(`${f.name}: ${m}`); logEvent("alert", `${f.name}: ${m}`);
     }
   }
@@ -951,7 +1049,7 @@ function inline(s) {
   h = h.replace(/\s*\[[^\]\r\n]*?(?:\.pdf|Page\s*\d+)[^\]\r\n]*?\]/gi, "");
   h = h.replace(/\s*\([^\)\r\n]*?(?:\.pdf|Page\s*\d+)[^\)\r\n]*?\)/gi, "");
   h = h.replace(/\s*\[\d+(?:\s*,\s*\d+)*\](?:\s*[^,\n\r]*?\.pdf,\s*Page\s*\d+)?/gi, "");
-  h = h.replace(/\s*\[\d{1,2}\]/g, "");
+  h = h.replace(/\[(\d{1,2})\]/g, '<span class="fn">[$1]</span>');
   h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
   h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   return h;
@@ -961,11 +1059,36 @@ function renderAnswer(text) {
   const flushP = () => { if (para.length) { out.push(`<p>${para.map(inline).join("<br>")}</p>`); para = []; } };
   const flushL = () => { if (list) { out.push(`<${list.tag}>${list.items.map(i => `<li>${inline(i)}</li>`).join("")}</${list.tag}>`); list = null; } };
   let cleaned = String(text).replace(/\r/g, "");
+  // Replace LaTeX arrows and macros
+  cleaned = cleaned.replace(/\\rightarrow/g, "->").replace(/\\leftarrow/g, "<-");
+  cleaned = cleaned.replace(/\\text\{([^}]*)\}/g, "$1");
+  cleaned = cleaned.replace(/\$\$(.*?)\$\$/gs, "$1");
+  cleaned = cleaned.replace(/\$([^\$\n]+)\$/g, "$1");
   cleaned = cleaned.replace(/\s*\*\(?(?:Source|Cites?):?[^\n\r]*?\)\*?/gi, "");
   cleaned = cleaned.replace(/\s*\[[^\]\r\n]*?(?:\.pdf|Page\s*\d+)[^\]\r\n]*?\]/gi, "");
   cleaned = cleaned.replace(/\s*\([^\)\r\n]*?(?:\.pdf|Page\s*\d+)[^\)\r\n]*?\)/gi, "");
   cleaned = cleaned.replace(/\s*\[\d+(?:\s*,\s*\d+)*\](?:\s*[^,\n\r]*?\.pdf,\s*Page\s*\d+)?/gi, "");
+  cleaned = cleaned.replace(/(?im)^\s*\*?\*?note:?\*?\*?\s*(?:there is\s+)?no (?:missing information|assumptions|other details missing)[^\n]*\s*$/g, "");
+
+  let inCode = false, codeLang = "", codeLines = [];
   for (const raw of cleaned.split("\n")) {
+    if (raw.trim().startsWith("```")) {
+      if (!inCode) {
+        flushP(); flushL();
+        inCode = true;
+        codeLang = raw.trim().slice(3).trim();
+        codeLines = [];
+      } else {
+        inCode = false;
+        out.push(`<pre><code class="${esc(codeLang)}">${esc(codeLines.join("\n"))}</code></pre>`);
+        codeLines = [];
+      }
+      continue;
+    }
+    if (inCode) {
+      codeLines.push(raw);
+      continue;
+    }
     const line = raw.trimEnd();
     if (!line.trim()) { flushP(); flushL(); continue; }
     const m = line.match(/^\s*([*\-•]|\d+[.)])\s+(.*)$/);
@@ -973,6 +1096,9 @@ function renderAnswer(text) {
     const h = line.match(/^#{1,4}\s+(.*)$/);
     if (h) { flushP(); flushL(); out.push(`<h4>${inline(h[1])}</h4>`); continue; }
     flushL(); para.push(line);
+  }
+  if (inCode && codeLines.length) {
+    out.push(`<pre><code class="${esc(codeLang)}">${esc(codeLines.join("\n"))}</code></pre>`);
   }
   flushP(); flushL(); return out.join("");
 }
@@ -1051,8 +1177,9 @@ function renderTree() {
   $("#moreBtn").hidden = list.length <= 4 && !state.showAll; $("#moreBtn").firstChild.textContent = state.showAll ? "Show less " : "See More ";
 }
 function renderFiles() {
-  $("#files").innerHTML = state.files.map(f => `<li class="row-item">${icon("file")}<span class="nm">${esc(f.name)}</span><span class="st">${f.chunks != null ? f.chunks + " chunks" : "indexed"}</span></li>`).join("");
+  $("#files").innerHTML = state.files.map(f => `<li class="row-item">${icon("file")}<span class="nm">${esc(f.name)}</span><span class="st">${f.chunks != null ? f.chunks + " chunks" : "indexed"}</span><button class="preview-btn" type="button" data-preview="${esc(f.name)}" title="Preview document">👁 View</button></li>`).join("");
   $("#filesEmpty").hidden = state.files.length > 0;
+  $$("#files [data-preview]").forEach(btn => btn.addEventListener("click", e => openPreview(e.currentTarget.dataset.preview)));
 }
 function renderSpark() {
   const L = state.latencies.slice(-10), el = $("#spark"), t = $("#sparkText");

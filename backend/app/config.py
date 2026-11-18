@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
     embedding_model: str = "all-MiniLM-L6-v2"
     similarity_threshold: float = 0.20
     retrieval_top_k: int = 10

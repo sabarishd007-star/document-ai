@@ -22,10 +22,36 @@ from backend.app.services.chunking import chunk_text
 from backend.app.services.vector_store import VectorStore
 from backend.app.services.rag import RAGService
 
+import threading
+from contextlib import asynccontextmanager
+
+# Shared singletons
+vector_store = VectorStore()
+# Attempt loading existing index if present on disk
+vector_store.load()
+rag_service = RAGService(vector_store=vector_store)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Pre-warm embedding model in a background thread so server boots instantly."""
+    def _warmup():
+        try:
+            logging.info("Pre-warming embedding model in background thread...")
+            _ = vector_store.model
+            logging.info("Embedding model pre-warmed successfully (dimension: %s).", vector_store.dimension)
+        except Exception as e:
+            logging.warning("Embedding model pre-warming deferred: %s", e)
+
+    threading.Thread(target=_warmup, daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="DocuMind API",
     description="Intelligent Document RAG Assistant with Gemini",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Register exception handlers
@@ -39,28 +65,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Shared singletons
-vector_store = VectorStore()
-# Attempt loading existing index if present on disk
-vector_store.load()
-rag_service = RAGService(vector_store=vector_store)
-
-
-import threading
-
-@app.on_event("startup")
-def on_startup():
-    """Pre-warm embedding model in a background thread so server boots instantly."""
-    def _warmup():
-        try:
-            logging.info("Pre-warming embedding model in background thread...")
-            _ = vector_store.model
-            logging.info("Embedding model pre-warmed successfully (dimension: %s).", vector_store.dimension)
-        except Exception as e:
-            logging.warning("Embedding model pre-warming deferred: %s", e)
-
-    threading.Thread(target=_warmup, daemon=True).start()
 
 
 # Request schemas

@@ -5,38 +5,64 @@ import logging
 import threading
 from typing import Dict, Any, List
 from google import genai
+from google.genai import types
 from backend.app.config import settings
 from backend.app.utils.errors import DocuMindException
 
 logger = logging.getLogger("documind.rag")
 
-RAG_SYSTEM_PROMPT = """You are an expert AI technical study assistant. Answer the user question using ONLY the provided document chunks below.
+RAG_SYSTEM_PROMPT = """Answer only from the provided context.
+Formatting rules:
+- Use plain text and Markdown only. Never use LaTeX or $...$ math. Write arrows as ->.
+- Put code, TAC and formulas inside fenced code blocks.
+- Do not add notes about your own process, such as "no assumptions were introduced".
+- If something the question asks for is missing from the context, say so in one short sentence at the end: "Not in the documents: <what is missing>".
+- If nothing relevant is in the context, reply exactly: "I couldn't find this in the uploaded documents."
+- Cite sources as [1], [2] matching the numbered context chunks."""
 
-Answer Quality Rules:
-1. Strict Grounding: Answer using ONLY the retrieved document context. Do not invent equations, examples, facts, or assumptions outside the text.
-2. Complete Coverage: Include all relevant information available in the retrieved chunks. When asked about a model, concept, or architecture, always include its definition, components, working mechanism, advantages, limitations, and applications whenever the document provides them.
-3. Detail Preservation: Do not omit important technical points, benefits, equations, or lists just to make the answer shorter. Include all specific types (e.g. Sparse, Denoising, Contractive, VAE) and parameters (e.g. L1 sparsity, L2 small weights, Jacobian Frobenius penalty) described in the chunks.
-4. Precise Attribution: Keep models and concepts strictly separated. Do not mix or transfer properties, limitations, or advantages of one model to another (e.g., Boltzmann Machine vs. Deep Boltzmann Machine vs. Deep Belief Network).
-5. Exact Terminology: Preserve the exact terminology, definitions, parameter names, and organization used in the source document.
-6. Structured Presentation: Present answers with clear markdown headings, bullet points, and numbered lists for readability.
-7. Missing Information: If the retrieved context does not contain certain details (e.g., a specific formula or limitation), explicitly state what information is missing instead of guessing or filling in from general knowledge.
-8. Clean Output: Do NOT mention or print source file names, document titles, or page numbers (such as '(filename.pdf, Page X)', '[dev unit-2.pdf]', or '[1]') anywhere in your answer text.
-"""
-
-LLM_TIMEOUT_SECONDS = 45
+LLM_TIMEOUT_SECONDS = 25
 LLM_MAX_RETRIES = 1
 SNIPPET_LENGTH = 140  # characters shown in the citation card
 
 
+def clean_answer(text: str) -> str:
+    """
+    Cleans LaTeX math, unwraps \\text{...}, converts \\rightarrow to ->,
+    and strips any trailing process notes from the model reply.
+    """
+    if not text:
+        return ""
+
+    # Replace LaTeX arrows
+    text = re.sub(r'\\rightarrow', '->', text)
+    text = re.sub(r'\\leftarrow', '<-', text)
+
+    # Unwrap \text{content} -> content
+    text = re.sub(r'\\text\{([^}]*)\}', r'\1', text)
+
+    # Strip $$...$$ display math
+    text = re.sub(r'\$\$(.*?)\$\$', r'\1', text, flags=re.DOTALL)
+
+    # Strip $...$ inline math
+    text = re.sub(r'\$([^\$\n]+)\$', r'\1', text)
+
+    # Remove trailing process notes like "Note: No missing information..."
+    text = re.sub(
+        r'(?im)^\s*\*?\*?note:?\*?\*?\s*(?:there is\s+)?no (?:missing information|assumptions|other details missing)[^\n]*\s*$',
+        '',
+        text
+    )
+
+    return text.strip()
+
+
 def clean_citations(text: str) -> str:
-    """Removes inline file citations like (file.pdf, Page 5) or [1] from text."""
+    """Removes inline file citations like (file.pdf, Page 5) from text while preserving [1]."""
     if not text:
         return ""
     text = re.sub(r'\s*\*\(?(?:Source|Cites?):?[^\n\r]*?\)\*?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*\[[^\]\r\n]*?(?:\.pdf|Page\s*\d+)[^\]\r\n]*?\]', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*\([^\)\r\n]*?(?:\.pdf|Page\s*\d+)[^\)\r\n]*?\)', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\s*\[\d+(?:\s*,\s*\d+)*\](?:\s*[^,\n\r]*?\.pdf,\s*Page\s*\d+)?', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\s*\[\d+\]', '', text)
     return text.strip()
 
 
@@ -71,30 +97,35 @@ class RAGService:
         return self._client
 
     def _call_gemini_with_timeout(self, model: str, prompt: str) -> str:
-        """Calls Gemini with a hard timeout and one retry on failure/timeout."""
-        result: Dict[str, Any] = {"text": None, "error": None}
+        """Calls Gemini with a hard timeout and fallback model on failure/timeout."""
+        fallback = "gemini-3.5-flash-lite" if model != "gemini-3.5-flash-lite" else "gemini-3.5-flash"
+        models_to_try = [model]
+        if fallback not in models_to_try:
+            models_to_try.append(fallback)
 
-        def _run():
-            try:
-                response = self.client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                )
-                result["text"] = response.text if response.text else ""
-            except Exception as e:
-                result["error"] = str(e)
+        for attempt, current_model in enumerate(models_to_try):
+            result: Dict[str, Any] = {"text": None, "error": None}
 
-        for attempt in range(LLM_MAX_RETRIES + 1):
+            def _run(m=current_model):
+                try:
+                    response = self.client.models.generate_content(
+                        model=m,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(temperature=0.1),
+                    )
+                    result["text"] = response.text if response.text else ""
+                except Exception as e:
+                    result["error"] = str(e)
+
             t0 = time.perf_counter()
-            result = {"text": None, "error": None}
             thread = threading.Thread(target=_run, daemon=True)
             thread.start()
             thread.join(timeout=LLM_TIMEOUT_SECONDS)
             elapsed = time.perf_counter() - t0
 
             if thread.is_alive():
-                logger.warning("Gemini timed out after %.1fs (attempt %d)", elapsed, attempt + 1)
-                if attempt < LLM_MAX_RETRIES:
+                logger.warning("Gemini model %s timed out after %.1fs (attempt %d)", current_model, elapsed, attempt + 1)
+                if attempt < len(models_to_try) - 1:
                     continue
                 raise DocuMindException(
                     f"Gemini did not respond within {LLM_TIMEOUT_SECONDS}s. Please try again shortly.",
@@ -102,15 +133,15 @@ class RAGService:
                 )
 
             if result["error"]:
-                logger.error("Gemini error (attempt %d): %s", attempt + 1, result["error"])
-                if attempt < LLM_MAX_RETRIES:
+                logger.warning("Gemini model %s error (attempt %d): %s", current_model, attempt + 1, result["error"])
+                if attempt < len(models_to_try) - 1:
                     continue
                 raise DocuMindException(
                     f"Error querying Gemini model: {result['error']}",
                     status_code=502
                 )
 
-            logger.info("Gemini responded in %.2fs (attempt %d)", elapsed, attempt + 1)
+            logger.info("Gemini (%s) responded in %.2fs", current_model, elapsed)
             return result["text"]
 
     def answer_query(self, query: str, top_k: int = None, model_name: str = None) -> Dict[str, Any]:
@@ -118,7 +149,7 @@ class RAGService:
         Retrieves unique context chunks and generates a grounded, numbered-citation answer.
         Each stage is timed and logged.
         """
-        target_model = model_name or getattr(settings, "gemini_model", "gemini-3.5-flash")
+        target_model = model_name or getattr(settings, "gemini_model", "gemini-3.5-flash-lite")
         k = top_k or getattr(settings, "retrieval_top_k", 6)
 
         if not query.strip():
@@ -161,9 +192,9 @@ class RAGService:
         logger.info("LLM generation: %.1f ms with model %s", llm_ms, target_model)
 
         if not answer_text:
-            answer_text = "Unable to generate a response."
+            answer_text = "I couldn't find this in the uploaded documents."
         else:
-            answer_text = clean_citations(answer_text)
+            answer_text = clean_answer(answer_text)
 
         # Build citation cards with snippet preview and page numbers
         citations = [
@@ -201,7 +232,7 @@ class RAGService:
         """
         import json
         t0 = time.perf_counter()
-        target_model = settings.gemini_model or "gemini-3.5-flash"
+        target_model = settings.gemini_model or "gemini-3.5-flash-lite"
 
         # Stage 1: Retrieval
         chunks = self.vector_store.search(query=query, top_k=top_k)
@@ -247,18 +278,33 @@ class RAGService:
             f"Answer:"
         )
 
-        # Stage 3: Streaming generation
-        try:
-            stream_response = self.client.models.generate_content_stream(
-                model=target_model,
-                contents=prompt,
-            )
-            for chunk in stream_response:
-                if chunk.text:
-                    yield f"data: {json.dumps({'type': 'token', 'token': chunk.text})}\n\n"
-        except Exception as e:
-            logger.error("Streaming error from Gemini: %s", e)
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+        # Stage 3: Streaming generation with automatic fallback
+        models_to_try = [target_model]
+        fallback_model = "gemini-3.5-flash-lite" if target_model != "gemini-3.5-flash-lite" else "gemini-3.5-flash"
+        if fallback_model not in models_to_try:
+            models_to_try.append(fallback_model)
+
+        success = False
+        last_error = None
+        for m in models_to_try:
+            try:
+                stream_response = self.client.models.generate_content_stream(
+                    model=m,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.1),
+                )
+                for chunk in stream_response:
+                    if chunk.text:
+                        yield f"data: {json.dumps({'type': 'token', 'token': chunk.text})}\n\n"
+                success = True
+                break
+            except Exception as e:
+                logger.warning("Streaming attempt with model %s failed: %s", m, e)
+                last_error = e
+
+        if not success:
+            logger.error("All streaming model attempts failed: %s", last_error)
+            yield f"data: {json.dumps({'type': 'error', 'error': str(last_error)})}\n\n"
 
         total_ms = (time.perf_counter() - t0) * 1000
         yield f"data: {json.dumps({'type': 'done', 'latency_ms': round(total_ms, 1)})}\n\n"

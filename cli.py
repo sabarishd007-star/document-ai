@@ -18,6 +18,7 @@ def main():
     parser_run.add_argument("--host", default="127.0.0.1", help="Host interface (default: 127.0.0.1)")
     parser_run.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
     parser_run.add_argument("--reload", action="store_true", help="Enable auto-reload on code change")
+    parser_run.add_argument("--open", action="store_true", help="Automatically open the web UI in default browser")
 
     # Command: status
     subparsers.add_parser("status", help="Check vector index status")
@@ -42,9 +43,14 @@ def main():
 
     if args.command == "run":
         import uvicorn
+        url = f"http://{args.host}:{args.port}/ui"
         print(f"[*] Starting DocuMind on http://{args.host}:{args.port}")
-        print(f"[*] Web UI available at: http://{args.host}:{args.port}/ui")
+        print(f"[*] Web UI available at: {url}")
         print(f"[*] API documentation at: http://{args.host}:{args.port}/docs")
+        if args.open:
+            import webbrowser, threading
+            print(f"[*] Opening browser at {url} ...")
+            threading.Timer(1.2, lambda: webbrowser.open(url)).start()
         uvicorn.run("backend.app.main:app", host=args.host, port=args.port, reload=args.reload)
 
     elif args.command == "status":

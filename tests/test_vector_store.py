@@ -13,7 +13,7 @@ def mock_vector_store(tmp_path):
     mock_model = MagicMock()
     mock_model.get_sentence_embedding_dimension.return_value = 4
     
-    def mock_encode(texts, convert_to_numpy=True, normalize_embeddings=True):
+    def mock_encode(texts, *args, **kwargs):
         vectors = []
         for text in texts:
             # Deterministic mock vectors

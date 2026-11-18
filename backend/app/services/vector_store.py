@@ -24,8 +24,8 @@ class VectorStore:
         self._model = None
         self.dimension = None
         self.index = None
-        self.metadata_store: List+
-        [Dict[str, Any]] = []
+        self.metadata_store: List[Dict[str, Any]] = []
+        
         # Set of SHA-256 hashes of full raw file bytes — prevents duplicate uploads
         self.indexed_file_hashes: Set[str] = set()
 
@@ -34,13 +34,15 @@ class VectorStore:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
-            self.dimension = self._model.get_sentence_embedding_dimension()
+            get_dim = getattr(self._model, "get_embedding_dimension", self._model.get_sentence_embedding_dimension)
+            self.dimension = get_dim()
         return self._model
 
     def _ensure_index(self):
         if self.index is None:
             if self.dimension is None:
-                self.dimension = self.model.get_sentence_embedding_dimension()
+                get_dim = getattr(self.model, "get_embedding_dimension", self.model.get_sentence_embedding_dimension)
+                self.dimension = get_dim()
             self.index = faiss.IndexFlatIP(self.dimension)
 
     # ------------------------------------------------------------------
