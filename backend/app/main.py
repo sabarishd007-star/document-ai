@@ -2,7 +2,7 @@ import os
 import logging
 import hashlib
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -201,6 +201,16 @@ def query_stream_alias(request: QueryRequest):
 @app.delete("/index")
 def index_alias():
     return clear_index()
+
+@app.get("/overview")
+def overview_redirect():
+    return RedirectResponse(url="/ui/#overview")
+
+
+@app.get("/chat")
+def chat_redirect():
+    return RedirectResponse(url="/ui/#chat")
+
 
 # Mount frontend web interface
 _base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

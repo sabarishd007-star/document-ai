@@ -762,8 +762,9 @@ async function refreshStatus() {
       minSim: pick(d, ["min_similarity", "similarity_threshold", "threshold"]),
       files: pick(d, ["files", "documents"]),
     };
-    if (Array.isArray(state.status.files) && !state.files.length) {
-      state.files = state.status.files.map(f => typeof f === "string" ? { name: f } : { name: f.filename || f.name, chunks: pick(f, ["chunks", "num_chunks"]) }).filter(f => f.name);
+    if (Array.isArray(state.status.files)) {
+      state.files = state.status.files.map(f => typeof f === "string" ? { name: f } : { name: f.filename || f.name, chunks: pick(f, ["chunks", "num_chunks"]) }).filter(f => f && f.name);
+      store.set("files", state.files);
     }
     if (state.status.chunks === 0) { state.files = []; store.set("files", []); }
   } catch { state.status = { ...state.status, online: false }; }
@@ -1177,13 +1178,20 @@ function renderTree() {
   $("#moreBtn").hidden = list.length <= 4 && !state.showAll; $("#moreBtn").firstChild.textContent = state.showAll ? "Show less " : "See More ";
 }
 function renderFiles() {
-  $("#files").innerHTML = state.files.map(f => `<li class="row-item">${icon("file")}<span class="nm">${esc(f.name)}</span><span class="st">${f.chunks != null ? f.chunks + " chunks" : "indexed"}</span><button class="preview-btn" type="button" data-preview="${esc(f.name)}" title="Preview document">👁 View</button></li>`).join("");
-  $("#filesEmpty").hidden = state.files.length > 0;
+  const list = Array.isArray(state.files) ? state.files : [];
+  $("#files").innerHTML = list.map(f => {
+    const name = typeof f === "string" ? f : (f?.name || f?.filename || "document");
+    const chunks = f?.chunks != null ? f.chunks : (f?.num_chunks != null ? f.num_chunks : null);
+    return `<li class="row-item">${icon("file")}<span class="nm">${esc(name)}</span><span class="st">${chunks != null ? chunks + " chunks" : "indexed"}</span><button class="preview-btn" type="button" data-preview="${esc(name)}" title="Preview document">👁 View</button></li>`;
+  }).join("");
+  $("#filesEmpty").hidden = list.length > 0;
   $$("#files [data-preview]").forEach(btn => btn.addEventListener("click", e => openPreview(e.currentTarget.dataset.preview)));
 }
 function renderSpark() {
-  const L = state.latencies.slice(-10), el = $("#spark"), t = $("#sparkText");
-  if (!L.length) { el.innerHTML = ""; t.textContent = "No answers yet."; return; }
+  const L = (Array.isArray(state.latencies) ? state.latencies : []).filter(v => typeof v === "number" && !isNaN(v)).slice(-10);
+  const el = $("#spark"), t = $("#sparkText");
+  if (!el) return;
+  if (!L.length) { el.innerHTML = ""; if (t) t.textContent = "No answers yet."; return; }
   const w = 300, h = 56, p = 6, max = Math.max(...L), min = Math.min(...L);
   const pts = L.map((v, i) => [p + (L.length === 1 ? (w - 2 * p) / 2 : i * (w - 2 * p) / (L.length - 1)), h - p - ((v - min) / ((max - min) || 1)) * (h - 2 * p)]);
   const last = pts[pts.length - 1];
@@ -1191,24 +1199,39 @@ function renderSpark() {
     <polyline points="${pts.map(q => q.join(",")).join(" ")}" fill="none" stroke="url(#sg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
     <circle cx="${last[0]}" cy="${last[1]}" r="3.4" fill="#8FB0FF"/></svg>`;
   const avg = L.reduce((a, b) => a + b, 0) / L.length;
-  t.textContent = `Last ${fmtMs(L[L.length - 1])}, average ${fmtMs(avg)} over ${L.length} answer${L.length === 1 ? "" : "s"}.`;
+  if (t) t.textContent = `Last ${fmtMs(L[L.length - 1])}, average ${fmtMs(avg)} over ${L.length} answer${L.length === 1 ? "" : "s"}.`;
 }
 
 /* ---------- navigation ---------- */
 function go(mode, view, push = true) {
   const m = mode ?? state.mode, v = view ?? state.view;
   if (push && (m !== state.mode || v !== state.view)) { state.nav = state.nav.slice(0, state.navIdx + 1).concat([{ mode: m, view: v }]); state.navIdx = state.nav.length - 1; }
-  state.mode = m; state.view = v; applyView();
+  state.mode = m; state.view = v;
+  try {
+    if (history.replaceState) {
+      history.replaceState(null, "", state.mode === "overview" ? "#overview" : "#chat");
+    }
+  } catch {}
+  applyView();
 }
 function applyView() {
-  document.body.dataset.mode = state.mode; $("#stage").dataset.view = state.view;
-  $("#modeChat").setAttribute("aria-pressed", state.mode === "chat"); $("#modeOverview").setAttribute("aria-pressed", state.mode === "overview");
-  $("#railChat").classList.toggle("on", state.mode === "chat"); $("#railDocs").classList.toggle("on", state.mode === "overview");
-  $("#crumbHere").textContent = state.mode === "overview" ? "Overview" : state.view === "thread" ? "Conversation" : "Document Assistant";
-  $("#navBack").disabled = state.navIdx <= 0; $("#navFwd").disabled = state.navIdx >= state.nav.length - 1;
-  if (state.mode === "chat" && state.view === "thread") { const t = $("#thread"); t.scrollTop = t.scrollHeight; }
+  document.body.dataset.mode = state.mode;
+  const stage = $("#stage");
+  if (stage) stage.dataset.view = state.view;
+  $("#modeChat")?.setAttribute("aria-pressed", state.mode === "chat");
+  $("#modeOverview")?.setAttribute("aria-pressed", state.mode === "overview");
+  $("#railChat")?.classList.toggle("on", state.mode === "chat");
+  $("#railDocs")?.classList.toggle("on", state.mode === "overview");
+  const crumb = $("#crumbHere");
+  if (crumb) crumb.textContent = state.mode === "overview" ? "Overview" : state.view === "thread" ? "Conversation" : "Document Assistant";
+  if ($("#navBack")) $("#navBack").disabled = state.navIdx <= 0;
+  if ($("#navFwd")) $("#navFwd").disabled = state.navIdx >= state.nav.length - 1;
+  if (state.mode === "chat" && state.view === "thread") { const t = $("#thread"); if (t) t.scrollTop = t.scrollHeight; }
   if (state.view === "home") renderTree();
-  if (state.mode === "overview") { renderSpark(); renderFiles(); }
+  if (state.mode === "overview") {
+    try { renderSpark(); } catch (e) { console.warn("renderSpark error", e); }
+    try { renderFiles(); } catch (e) { console.warn("renderFiles error", e); }
+  }
 }
 const step = d => { const i = state.navIdx + d; if (i < 0 || i >= state.nav.length) return; state.navIdx = i; go(state.nav[i].mode, state.nav[i].view, false); };
 function openEntry(id) { go("chat", "thread"); requestAnimationFrame(() => document.getElementById("e-" + id)?.scrollIntoView({ block: "start" })); }
@@ -1432,6 +1455,14 @@ function orbVideo() {
 }
 
 /* ---------- start ---------- */
+if (location.hash === "#overview" || new URLSearchParams(location.search).get("mode") === "overview" || new URLSearchParams(location.search).get("tab") === "overview") {
+  state.mode = "overview";
+}
+window.addEventListener("hashchange", () => {
+  if (location.hash === "#overview" && state.mode !== "overview") go("overview", state.view, false);
+  if (location.hash === "#chat" && state.mode !== "chat") go("chat", state.view, false);
+});
+
 bind(); splitHeadline(); renderDepth(); renderThread(); renderTree(); renderSpark(); renderExportBtn(); renderStatus(); applyView(); updateComposer(); orbVideo();
 intro(); refreshStatus();
 setInterval(refreshStatus, 20000);
