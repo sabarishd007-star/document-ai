@@ -1069,7 +1069,7 @@ function renderAnswer(text) {
   cleaned = cleaned.replace(/\s*\[[^\]\r\n]*?(?:\.pdf|Page\s*\d+)[^\]\r\n]*?\]/gi, "");
   cleaned = cleaned.replace(/\s*\([^\)\r\n]*?(?:\.pdf|Page\s*\d+)[^\)\r\n]*?\)/gi, "");
   cleaned = cleaned.replace(/\s*\[\d+(?:\s*,\s*\d+)*\](?:\s*[^,\n\r]*?\.pdf,\s*Page\s*\d+)?/gi, "");
-  cleaned = cleaned.replace(/(?im)^\s*\*?\*?note:?\*?\*?\s*(?:there is\s+)?no (?:missing information|assumptions|other details missing)[^\n]*\s*$/g, "");
+  cleaned = cleaned.replace(/^\s*\*?\*?note:?\*?\*?\s*(?:there is\s+)?no (?:missing information|assumptions|other details missing)[^\n]*\s*$/gim, "");
 
   let inCode = false, codeLang = "", codeLines = [];
   for (const raw of cleaned.split("\n")) {
